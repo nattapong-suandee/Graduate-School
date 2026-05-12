@@ -1,0 +1,127 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    // 0. GLOBAL SAFETY NET
+    // ==========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // PHASE 3: PRIMITIVE DEFINITIONS
+    // ==========================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isVerified() {
+      return isSignedIn();
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ==========================================
+    // PILLAR 2: VALIDATION BLUEPRINTS
+    // ==========================================
+    
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 100 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.role in ['student', 'admin'] &&
+             (data.role == 'admin' || data.degreeLevel in ["Master's Degree", "Doctoral Degree"]) &&
+             (!('studentId' in data) || (data.studentId is string && data.studentId.size() <= 20)) &&
+             (!('major' in data) || (data.major is string && data.major.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1500000)) &&
+             (!('thesisTitle' in data) || (data.thesisTitle is string && data.thesisTitle.size() <= 300)) &&
+             (!('thesisProgress' in data) || (data.thesisProgress is int && data.thesisProgress >= 1 && data.thesisProgress <= 7)) &&
+             (!('graduationStep' in data) || (data.graduationStep is int && data.graduationStep >= 1 && data.graduationStep <= 5)) &&
+             data.keys().hasAll(['uid', 'email', 'role', 'displayName']);
+    }
+
+    function isValidAnnouncement(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 5000 &&
+             data.category in ['General', 'Thesis', 'Event'] &&
+             data.keys().hasAll(['title', 'content', 'category']);
+    }
+
+    function isValidSchedule(data) {
+      return data.subjectName is string && data.subjectName.size() <= 200 &&
+             data.subjectCode is string && data.subjectCode.size() <= 20 &&
+             data.target in ["Master's Degree", "Doctoral Degree"] &&
+             data.keys().hasAll(['subjectName', 'subjectCode', 'date', 'timeRange', 'target']);
+    }
+
+    // ==========================================
+    // PILLAR 4 & 6: RESOURCE RULES
+    // ==========================================
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+                      incoming().uid == request.auth.uid &&
+                      (incoming().role == 'student' || incoming().email in ['admin.bu.ac.th', 'admin@bu.ac.th']);
+      allow update: if (isOwner(userId) || isAdmin()) && 
+                      isValidUser(incoming()) &&
+                      incoming().role == existing().role &&
+                      incoming().uid == existing().uid &&
+                      incoming().email == existing().email &&
+                      (
+                        isAdmin() || 
+                        (
+                          // Ownership-based update restrictions
+                          !incoming().diff(existing()).affectedKeys().hasAny(['graduationStep']) ||
+                          (
+                            incoming().graduationStep <= 3 && 
+                            existing().get('graduationStep', 0) <= 3
+                          )
+                        )
+                      );
+    }
+
+    match /announcements/{id} {
+      allow read, list: if isSignedIn();
+      allow create: if isAdmin() && isValidAnnouncement(incoming());
+      allow update: if isAdmin() && isValidAnnouncement(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /class_schedules/{id} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin() && isValidSchedule(incoming());
+    }
+
+    match /comprehensive_exams/{id} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /global_content/{contentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /global_settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

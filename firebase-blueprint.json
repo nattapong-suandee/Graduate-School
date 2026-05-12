@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "GlobalSettings": {
+      "title": "Global Settings",
+      "description": "Theme and system-wide configurations.",
+      "type": "object",
+      "properties": {
+        "backgroundImage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile with role and basic info",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "degreeLevel": { "type": "string", "enum": ["Master's Degree", "Doctoral Degree"] },
+        "displayName": { "type": "string" },
+        "studentId": { "type": "string" },
+        "major": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "thesisTitle": { "type": "string" },
+        "thesisProgress": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "graduationStep": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "displayName"]
+    },
+    "Content": {
+      "title": "Academic Content",
+      "description": "Schedule or Exam information managed by admins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["Class", "Exam"] },
+        "target": { "type": "string", "enum": ["Master's Degree", "Doctoral Degree"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "date", "type", "target"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "News and announcements from the university",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string", "enum": ["General", "Thesis", "Event"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "category"]
+    },
+    "ClassSchedule": {
+      "title": "Class Schedule",
+      "description": "Weekly class schedules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "timeRange": { "type": "string" },
+        "room": { "type": "string" },
+        "target": { "type": "string", "enum": ["Master", "Doctoral"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["subjectName", "subjectCode", "date", "timeRange", "target"]
+    },
+    "ComprehensiveExam": {
+      "title": "Comprehensive Exam",
+      "description": "Exams and evaluations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "target": { "type": "string", "enum": ["Master", "Doctoral"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "date", "location", "target"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User documents indexed by their Firebase Auth UID"
+    },
+    "announcements/{id}": {
+      "schema": "Announcement",
+      "description": "News and announcements"
+    },
+    "class_schedules/{id}": {
+      "schema": "ClassSchedule",
+      "description": "Class schedules"
+    },
+    "comprehensive_exams/{id}": {
+      "schema": "ComprehensiveExam",
+      "description": "Comprehensive exams"
+    },
+    "global_content/{contentId}": {
+      "schema": "Content",
+      "description": "Global academic content managed by admins (legacy)"
+    },
+    "global_settings/{settingId}": {
+      "schema": "GlobalSettings",
+      "description": "Application-wide settings like themes and configurations."
+    }
+  }
+}

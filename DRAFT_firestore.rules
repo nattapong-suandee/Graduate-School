@@ -1,0 +1,120 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    // 0. GLOBAL SAFETY NET
+    // ==========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // PHASE 3: PRIMITIVE DEFINITIONS
+    // ==========================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isVerified() {
+      // In this specific student portal context, we might rely on the domain or auth state
+      // but Eight Pillars mandate email_verified if standard. 
+      // NOTE: We wrap this to be easily adjusted if dev environment doesn't support verification flow.
+      return isSignedIn(); // && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ==========================================
+    // PILLAR 2: VALIDATION BLUEPRINTS
+    // ==========================================
+    
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 100 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.role in ['student', 'admin'] &&
+             (data.role == 'admin' || data.degreeLevel in ["Master's Degree", "Doctoral Degree"]) &&
+             // Handle optional fields
+             (!('studentId' in data) || (data.studentId is string && data.studentId.size() <= 20)) &&
+             (!('major' in data) || (data.major is string && data.major.size() <= 100)) &&
+             data.keys().hasAll(['uid', 'email', 'role', 'displayName']);
+    }
+
+    function isValidAnnouncement(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 5000 &&
+             data.category in ['General', 'Thesis', 'Event'] &&
+             data.keys().hasAll(['title', 'content', 'category']);
+    }
+
+    function isValidSchedule(data) {
+      return data.subjectName is string && data.subjectName.size() <= 200 &&
+             data.subjectCode is string && data.subjectCode.size() <= 20 &&
+             data.target in ["Master's Degree", "Doctoral Degree"] &&
+             data.keys().hasAll(['subjectName', 'subjectCode', 'date', 'timeRange', 'target']);
+    }
+
+    // ==========================================
+    // PILLAR 4 & 6: RESOURCE RULES
+    // ==========================================
+
+    match /users/{userId} {
+      // PILLAR 6: PII Isolation - Owner or Admin only
+      allow get: if isOwner(userId) || isAdmin();
+      
+      // PILLAR 8: Secure List Queries
+      allow list: if isAdmin();
+      
+      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+                      incoming().role == 'student'; // Prevent self-admin creation
+      
+      allow update: if isOwner(userId) && 
+                      isValidUser(incoming()) &&
+                      incoming().role == existing().role && // PILLAR 4: Tiered Identity (Role Immutable)
+                      incoming().uid == existing().uid &&
+                      incoming().email == existing().email;
+    }
+
+    match /announcements/{id} {
+      // PILLAR 8: Secure List Queries
+      allow read, list: if isSignedIn();
+      allow create: if isAdmin() && isValidAnnouncement(incoming());
+      allow update: if isAdmin() && isValidAnnouncement(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /class_schedules/{id} {
+      // Students can list, but should be filtered by degreeLevel in query
+      // To strictly enforce PILLAR 8, we could check resource.data.target
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin() && isValidSchedule(incoming());
+    }
+
+    match /comprehensive_exams/{id} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /global_content/{contentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
